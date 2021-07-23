@@ -1,5 +1,5 @@
-import React, { useState } from "react";
-import { Image, Pressable, FlatList } from "react-native";
+import React, { useState, useEffect } from "react";
+import { Image, Pressable, FlatList, ActivityIndicator } from "react-native";
 import { Picker } from "@react-native-picker/picker";
 import {
   MaterialIcons,
@@ -8,9 +8,12 @@ import {
   Feather,
   FontAwesome,
 } from "@expo/vector-icons";
+import { DataStore } from "aws-amplify";
 import { Text, View } from "../../components/Themed";
 import styles from "./styles";
+import { Movie, Season, Episode } from "../../src/models";
 import movie from "../../assets/data/movie";
+import { useRoute } from "@react-navigation/native";
 
 import EpisodeItem from "../../components/EpisodeItem";
 import VideoPlayer from "../../components/VideoPlayer/index";
@@ -19,20 +22,76 @@ const firstSeason = movie.seasons.items[0];
 const firstEpisode = firstSeason.episodes.items[0];
 
 const MovieDetailsScreen = () => {
-  const [currentSeason, setCurrentSeason] = useState(firstSeason);
-  const [currentEpisode, setCurrentEpisode] = useState(
-    firstSeason.episodes.items[0]
+  const [movie, setMovie] = useState<Movie | undefined>(undefined);
+  const [seasons, setSeasons] = useState<Season[]>([]);
+  const [episodes, setEpisodes] = useState<Episode[]>([]);
+
+  // For first time load and Picker
+  const [currentSeason, setCurrentSeason] = useState<Season | undefined>(
+    undefined
   );
 
-  const seasonNames = movie.seasons.items.map((season) => season.name);
-  console.log(seasonNames);
+  // For first time load and VideoPlayer
+  const [currentEpisode, setCurrentEpisode] = useState<Episode | undefined>(
+    undefined
+  );
+
+  // Mapping seasonNames to Picker
+  const seasonNames = seasons ? seasons.map((season) => season.name) : [];
+
+  const route = useRoute();
+  useEffect(() => {
+    const fetchMovies = async () => {
+      setMovie(await DataStore.query(Movie, route?.params?.id));
+    };
+
+    fetchMovies();
+  }, []);
+
+  useEffect(() => {
+    if (!movie) {
+      return;
+    }
+    const fetchSeasons = async () => {
+      const m = await DataStore.query(Season);
+      console.log("SSSeason");
+      console.log(m);
+      const movieSeasons = (await DataStore.query(Season)).filter(
+        (s) => s.movie?.id == movie.id
+      );
+      setSeasons(movieSeasons);
+      setCurrentSeason(movieSeasons[0]);
+    };
+
+    fetchSeasons();
+  }, [movie]);
+
+  useEffect(() => {
+    if (!currentSeason) {
+      return;
+    }
+    const fetchEpisodes = async () => {
+      const seasonEpisode = (await DataStore.query(Episode)).filter(
+        (e) => e?.season?.id == currentSeason?.id
+      );
+      setEpisodes(seasonEpisode);
+      setCurrentEpisode(seasonEpisode[0]);
+    };
+
+    fetchEpisodes();
+  }, [currentSeason]);
+
+  if (!movie) {
+    return <ActivityIndicator />;
+  }
+
   return (
     <View>
       {/* <Image style={styles.image} source={{ uri: firstEpisode.poster }} /> */}
-      <VideoPlayer episode={currentEpisode} />
+      {currentEpisode && <VideoPlayer episode={currentEpisode} />}
 
       <FlatList
-        data={currentSeason.episodes.items}
+        data={episodes}
         renderItem={({ item }) => (
           <EpisodeItem episode={item} onPress={setCurrentEpisode} />
         )}
@@ -92,24 +151,26 @@ const MovieDetailsScreen = () => {
                 <Text style={{ color: "darkgrey", marginTop: 5 }}>Share</Text>
               </View>
             </View>
-            <Picker
-              selectedValue={currentSeason.name}
-              onValueChange={(itemValue, itemIndex) => {
-                setCurrentSeason(movie.seasons.items[itemIndex]);
-              }}
-              style={{
-                width: 150,
-              }}
-            >
-              {seasonNames.map((seasonName) => (
-                <Picker.Item
-                  label={seasonName}
-                  value={seasonName}
-                  key={seasonName}
-                  color={"white"}
-                />
-              ))}
-            </Picker>
+            {currentSeason && (
+              <Picker
+                selectedValue={currentSeason.name}
+                onValueChange={(itemValue, itemIndex) => {
+                  setCurrentSeason(seasons[itemIndex]);
+                }}
+                style={{
+                  width: 150,
+                }}
+              >
+                {seasonNames.map((seasonName) => (
+                  <Picker.Item
+                    label={seasonName}
+                    value={seasonName}
+                    key={seasonName}
+                    color={"white"}
+                  />
+                ))}
+              </Picker>
+            )}
           </View>
         }
       />
